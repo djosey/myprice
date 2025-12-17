@@ -1,0 +1,28 @@
+{
+  "vendor": "Venice Whaler",
+  "vendor_full": "Venice Whale Bar & Grill",
+  "address": "10 Washington Blvd, Marina del Rey, CA 90292",
+  "date": "2025-12-06",
+  "time": "11:54 AM",
+  "server": "Down Bar D",
+  "check_number": "33",
+  "table": "31",
+  "customer": "BOWMAN, CHARLES",
+  "items": [
+    { "name": "Toast and Jam", "qty": 1, "price": 4.00 },
+    { "name": "Patron Silver Classic Margarita", "qty": 3, "price": 54.00 },
+    { "name": "Side Two Eggs Any Way", "qty": 1, "price": 7.00 },
+    { "name": "Chilaquiles", "qty": 1, "price": 17.00 },
+    { "name": "Grain Bowl", "qty": 1, "price": 15.00 },
+    { "name": "Seared Ahi", "qty": 1, "price": 10.00 },
+    { "name": "Cold Brew", "qty": 1, "price": 7.00 }
+  ],
+  "fees": [
+    { "name": "Happy and Healthy Fee", "rate": "3.00%", "amount": 3.42 }
+  ],
+  "subtotal": 117.42,
+  "tax": 11.10,
+  "total": 128.52,
+  "confidence_notes": "High confidence OCR (95-100%). All items and prices verified against image.",
+  "anomalies": []
+}
