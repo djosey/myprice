@@ -21,6 +21,7 @@ type Server struct {
 	uploadDir   string
 	textractDir string
 	projectRoot string
+	claudeAPI   *ClaudeAPI
 }
 
 // NewServer creates a new HTTP API server.
@@ -39,10 +40,18 @@ func NewServer(uploadDir string) *Server {
 		log.Printf("Warning: could not create textract cache dir: %v", err)
 	}
 
+	// Initialize Claude API (optional - will log warning if not configured)
+	claudeAPI, err := NewClaudeAPI()
+	if err != nil {
+		log.Printf("Warning: Claude API not configured: %v. LLM parsing will fail.", err)
+		log.Printf("Set ANTHROPIC_API_KEY environment variable to enable LLM parsing.")
+	}
+
 	return &Server{
 		uploadDir:   uploadDir,
 		textractDir: textractDir,
 		projectRoot: projectRoot,
+		claudeAPI:   claudeAPI,
 	}
 }
 
@@ -180,8 +189,25 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build structured output from textract
-	llmOutput := parseTextractToReceipt(textractOutput)
+	// Parse receipt using LLM
+	var llmOutput map[string]any
+	if s.claudeAPI != nil {
+		log.Printf("Parsing receipt with Claude API...")
+		receipt, err := s.claudeAPI.ParseReceiptWithLLM(imagePath, textractOutput)
+		if err != nil {
+			log.Printf("LLM parsing failed: %v, falling back to regex parser", err)
+			// Fallback to regex parser if LLM fails
+			llmOutput = parseTextractToReceipt(textractOutput)
+		} else {
+			// Convert ReceiptOutput to map[string]any
+			jsonBytes, _ := json.Marshal(receipt)
+			json.Unmarshal(jsonBytes, &llmOutput)
+		}
+	} else {
+		log.Printf("Claude API not configured, using regex parser")
+		// Fallback to regex parser
+		llmOutput = parseTextractToReceipt(textractOutput)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(AnalyzeResponse{
@@ -197,11 +223,18 @@ func (s *Server) findOrRunTextract(imagePath string) (string, string, error) {
 	baseName := filepath.Base(imagePath)
 	nameWithoutExt := strings.TrimSuffix(baseName, filepath.Ext(baseName))
 
-	// Check for cached textract output in cache folder
+	// Check if caching is disabled (for testing)
+	disableCache := os.Getenv("DISABLE_CACHE") == "true" || os.Getenv("DISABLE_CACHE") == "1"
+
+	// Check for cached textract output in cache folder (skip if cache disabled)
 	cachedPath := filepath.Join(s.textractDir, nameWithoutExt+"_textract.json")
-	if _, err := os.Stat(cachedPath); err == nil {
-		log.Printf("Found cached Textract: %s", cachedPath)
-		return cachedPath, "cached", nil
+	if !disableCache {
+		if _, err := os.Stat(cachedPath); err == nil {
+			log.Printf("Found cached Textract: %s", cachedPath)
+			return cachedPath, "cached", nil
+		}
+	} else {
+		log.Printf("Cache disabled - will run fresh Textract")
 	}
 
 	// Verify image exists before running Textract
@@ -248,12 +281,18 @@ func (s *Server) runTextract(imagePath, outputPath string) (string, error) {
 		return "", fmt.Errorf("textract command failed: %w", err)
 	}
 
-	// Save to cache
+	// Always save the file (needed for loading), even if cache is disabled
+	// "Disable cache" means "don't reuse old cached files", not "don't save files"
 	if err := os.WriteFile(outputPath, output, 0644); err != nil {
-		return "", fmt.Errorf("failed to cache textract output: %w", err)
+		return "", fmt.Errorf("failed to save textract output: %w", err)
 	}
 
-	log.Printf("Cached Textract output: %s (%d bytes)", outputPath, len(output))
+	disableCache := os.Getenv("DISABLE_CACHE") == "true" || os.Getenv("DISABLE_CACHE") == "1"
+	if disableCache {
+		log.Printf("Cache disabled - saved Textract output temporarily: %s (%d bytes) (will not be reused)", outputPath, len(output))
+	} else {
+		log.Printf("Cached Textract output: %s (%d bytes)", outputPath, len(output))
+	}
 	return outputPath, nil
 }
 
